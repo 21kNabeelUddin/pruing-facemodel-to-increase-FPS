@@ -1,8 +1,11 @@
 import torch
 import time
 import numpy as np
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-def benchmark_fps(model, input_size=(1, 3, 112, 112), device='cpu', warmups=10, runs=100):
+def benchmark_fps(model, input_size=(1, 3, 160, 160), device='cpu', warmups=10, runs=100):
     model.to(device)
     model.eval()
     
@@ -44,12 +47,15 @@ if __name__ == "__main__":
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    print("--- Original IR50 ---")
+    print("--- Original InceptionResnetV1 ---")
     model = get_base_model()
-    benchmark_fps(model, device=device)
+    benchmark_fps(model, input_size=(1, 3, 160, 160), device=device)
     
-    print("\n--- Pruned IR50 (Example: Skipping some blocks) ---")
-    # Example pruning: skipping 2 blocks in layer2 and layer3
-    skip_config = {'layer2': [0, 2], 'layer3': [1, 3, 5]}
+    print("\n--- Pruned InceptionResnetV1 (Optimization Hypothesis) ---")
+    # Candidates from Sensitivity Analysis
+    skip_config = {
+        'repeat_2': [6, 0, 4, 8, 2, 3, 9], 
+        'repeat_3': [0]
+    }
     pruned_model = get_pruned_model(skip_config=skip_config)
-    benchmark_fps(pruned_model, device=device)
+    benchmark_fps(pruned_model, input_size=(1, 3, 160, 160), device=device)
