@@ -1,53 +1,65 @@
 # Face Recognition Model Optimization
 
-This project optimizes a pre-trained Face Recognition model (AdaFace IR50) for real-time performance by pruning layers and fine-tuning.
+This project optimizes an **InceptionResnetV1** model for real-time performance by pruning redundant blocks and fine-tuning to recover accuracy.
 
-## Structure
-- `models/`: Contains `base_model.py` (loads pre-trained) and `pruned_model.py` (skips layers).
-- `data/`: `dataset.py` for loading face images (ImageFolder structure).
-- `utils/`: `benchmark.py` for FPS testing, `validation.py` for evaluation.
-- `train.py`: Script for fine-tuning the pruned model.
+## 🧠 Pruning Theory: Residual Block Skipping
 
-## Setup
-1. **Environment**:
-   ```bash
-   conda activate general_purpose
-   pip install -r requirements.txt
+The model consists of three main stages: `repeat_1`, `repeat_2`, and `repeat_3`. 
+- **The Concept**: We don't delete tiny weights; we **skip entire mathematical blocks** during the forward pass.
+- **Why?**: Some layers in deep models are redundant. By skipping them, we avoid millions of multiplications, directly increasing **FPS** and reducing **Latency**.
+- **How we pick**: We use **Sensitivity Analysis**. We compare the "Face Fingerprint" (embeddings) of the original model vs. the pruned model. If the fingerprints are >99% similar, the block is safe to prune.
+
+---
+
+## 🏃 Quick Start: Real-Time Demo
+Compare the **Original vs. Pruned** models live using your webcam:
+```bash
+python utils/demo.py
+```
+- **Press 'p'**: Toggle Pruning (watch the FPS in the top-left corner).
+- **Press 'q'**: Quit.
+
+---
+
+## 📂 Dataset Setup (MS1M-ArcFace)
+To fine-tune the model on your PC or Kaggle, follow this structure:
+
+1. **Download**: [MS1M-ArcFace Dataset](https://www.kaggle.com/datasets/yakhyokhuja/ms1m-arcface-dataset)
+2. **Path**: Place it in `data/ms1m_arcface/`
+3. **Structure**: 
+   ```text
+   data/ms1m_arcface/
+   ├── 0/ (Images of Person 0)
+   ├── 1/ (Images of Person 1)
+   └── ...
    ```
-   *Note: Requires Visual C++ Build Tools for `insightface` and `cython` on Windows.*
+*Note: The script handles the 112x112 images automatically by resizing them to 160x160 during loading.*
 
-2. **Data**:
-   Prepare your dataset in `data/your_dataset/` with subfolders for each identity.
-   ```
-   data/
-       ms1mv2/
-           id1/
-               img1.jpg
-           id2/
-               img1.jpg
-   ```
+---
 
-## Usage
+## 🛠️ Step-by-Step Optimization
 
-### 1. Benchmark Original vs Pruned
-Measure the inference speed difference.
+### 1. Sensitivity Analysis 
+Run this to see which blocks are safest for YOUR specific data:
+```bash
+python utils/sensitivity_analysis.py
+```
+Check `sensitivity_report.md` for the results.
+
+### 2. Benchmarking
+Verify the speed gain on your specific hardware (CPU/GPU):
 ```bash
 python utils/benchmark.py
 ```
-*Modify `utils/benchmark.py` to change pruning configuration.*
 
-### 2. Fine-Tuning
-Retrain the model after pruning (or skipping layers) to recover accuracy.
+### 3. Fine-Tuning (Recovery)
+After pruning, accuarcy drops slightly. Fine-tune to "heal" the model:
 ```bash
-python train.py --data_dir "data/ms1mv2" --epochs 10 --prune_layer2 "0,2" --prune_layer3 "1,3"
-```
-- `--prune_layer2 "0,2"`: Skips block 0 and 2 in layer 2.
-
-### 3. Validation
-Validation runs automatically during training. To run separately (placeholder):
-```bash
-python -c "from utils.validation import evaluate_lfw; evaluate_lfw(model, loader)"
+python train.py --prune_repeat_2 "6,0,4,8,2,3,9" --prune_repeat_3 "0" --data_dir "data/ms1m_arcface" --epochs 10
 ```
 
-## Pruning Strategy
-We use **Block Skipping**. Instead of pruning individual weights, whole residual blocks are skipped during forward pass. This reduces depth and increases FPS directly.
+## 📦 Project Structure
+- `models/`: `base_model.py` (facenet-pytorch loader) and `pruned_model.py` (skipping logic).
+- `data/`: `dataset.py` (auto-resizing loader).
+- `utils/`: `benchmark.py` (speed test), `demo.py` (webcam), `sensitivity_analysis.py` (safety ranking).
+- `requirements.txt`: Environment dependencies.

@@ -31,9 +31,9 @@ class FaceDataset(Dataset):
         return self.dataset[idx]
 
 def get_dataloader(data_dir, batch_size=32, shuffle=True, num_workers=4):
-    # Standard preprocessing for ArcFace/AdaFace (112x112, normalized to [-1, 1])
+    # Preprocessing for InceptionResnetV1 (160x160, normalized to [-1, 1])
     transform = transforms.Compose([
-        transforms.Resize((112, 112)),
+        transforms.Resize((160, 160)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
