@@ -56,10 +56,47 @@ python utils/benchmark.py
 After pruning, accuarcy drops slightly. Fine-tune to "heal" the model:
 ```bash
 python train.py --prune_repeat_2 "6,0,4,8,2,3,9" --prune_repeat_3 "0" --data_dir "data/ms1m_arcface" --epochs 10
-```
+```---
+
+## 📊 Evaluation & Accuracy
+
+### Baseline Accuracy
+The original InceptionResnetV1 model (pretrained on VGGFace2) achieves approximately **~99.0% accuracy** on the standard LFW (Labeled Faces in the Wild) benchmark.
+- **Your Target**: Within 3-5% of original (**~94% to 96%**).
+
+### How to Check Accuracy
+After running `train.py`, the script will automatically run a validation pass at the end of each epoch and print the `Validation Acc`. 
+- **Validation Dataset**: Use the "Testing Subset" described below.
+- **Result**: If your validation accuracy is >95%, you have successfully "heal" the pruned model!
+
+---
+
+## ✂️ Preparing Your Dataset (Split)
+
+Face recognition datasets are huge. For good results, we recommend:
+- **Images**: Fine-tune on at least **50,000 to 100,000 images**.
+- **Epochs**: **5 to 10 epochs** using a GPU.
+
+To create training and testing subsets on your PC:
+1. Run the splitting utility:
+   ```bash
+   python utils/split_dataset.py --src "data/ms1m_arcface" --train "data/train" --val "data/val" --ratio 0.9
+   ```
+   *This will put 90% of images in `data/train` and 10% in `data/val`.*
+
+2. Use these folders for training:
+   ```bash
+   python train.py --data_dir "data/train" --epochs 10
+   ```
+
+---
 
 ## 📦 Project Structure
 - `models/`: `base_model.py` (facenet-pytorch loader) and `pruned_model.py` (skipping logic).
 - `data/`: `dataset.py` (auto-resizing loader).
-- `utils/`: `benchmark.py` (speed test), `demo.py` (webcam), `sensitivity_analysis.py` (safety ranking).
+- `utils/`: 
+  - `benchmark.py` (speed test)
+  - `demo.py` (webcam view)
+  - `sensitivity_analysis.py` (safety ranking)
+  - `split_dataset.py` (prepare train/val sets)
 - `requirements.txt`: Environment dependencies.
