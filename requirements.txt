@@ -2,8 +2,8 @@
 torch==2.2.2+cu121
 torchvision==0.17.2+cu121
 torchaudio==2.2.2+cu121
+facenet-pytorch
 transformers
-insightface
 onnx
 onnxruntime-gpu
 numpy<2.0.0
@@ -12,3 +12,4 @@ scikit-learn
 matplotlib
 tqdm
 flet
+opencv-python
