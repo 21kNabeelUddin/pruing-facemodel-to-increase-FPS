@@ -29,7 +29,8 @@ def run_demo(args):
     # 1. Load Models
     print("Loading models...")
     # Initialize MTCNN for face detection
-    mtcnn = MTCNN(keep_all=False, device=device)
+    # Tuned to reduce false positives (stricter thresholds, larger min face)
+    mtcnn = MTCNN(keep_all=False, device=device, min_face_size=60, thresholds=[0.7, 0.8, 0.8])
     
     original_model = get_base_model()
     original_model.to(device).eval()
@@ -139,8 +140,8 @@ def run_demo(args):
 
         # High visibility UI
         draw_text_with_shadow(frame, f"Mode: {mode_text}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_color, 3)
-        draw_text_with_shadow(frame, f"FPS: {avg_fps:.1f}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-        draw_text_with_shadow(frame, f"Latency: {latency:.1f} ms", (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        draw_text_with_shadow(frame, f"FPS: {avg_fps:.1f}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2) # Cyan/Yellow text
+        draw_text_with_shadow(frame, f"Latency: {latency:.1f} ms", (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2) # Cyan/Yellow text
         
         draw_text_with_shadow(frame, "Press 'p' to toggle, 'q' to quit", (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
