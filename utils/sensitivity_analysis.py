@@ -2,13 +2,16 @@ import torch
 import torch.nn as nn
 import sys
 import os
+import argparse
+import glob
+import numpy as np
+from torchvision import transforms
+from PIL import Image
+
+# Ensure we can import from project root
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.base_model import get_base_model
 from models.pruned_model import get_pruned_model
-from torchvision import transforms
-from PIL import Image
-import glob
-import numpy as np
 
 def load_images(image_folder, device):
     image_paths = glob.glob(os.path.join(image_folder, "*.jpg")) + glob.glob(os.path.join(image_folder, "*.png"))
@@ -20,9 +23,6 @@ def load_images(image_folder, device):
         
     print(f"Found {len(image_paths)} images for analysis.")
     
-    # InceptionResnetV1 expects 160x160 usually, but can handle others. 
-    # Facenet-pytorch typically uses fixed_image_standardization or similar.
-    # standard normalization:
     transform = transforms.Compose([
         transforms.Resize((160, 160)),
         transforms.ToTensor(),
@@ -42,66 +42,53 @@ def load_images(image_folder, device):
         
     return torch.stack(tensors).to(device)
 
-def analyze_sensitivity(image_folder='faces'):
+def analyze_sensitivity(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Running sensitivity analysis on {device}...")
     
     # 1. Load Data
-    images = load_images(image_folder, device)
+    images = load_images(args.image_folder, device)
     if images is None:
         return
 
     # 2. Get Baseline Embeddings
     print("Loading base model...")
     base_model = get_base_model()
-    base_model.to(device)
-    base_model.eval()
+    base_model.to(device).eval()
     
     with torch.no_grad():
         base_embeddings = base_model(images)
 
-    # 3. Analyze Layers (InceptionResnetV1 structure)
-    # repeat_1: 5 blocks
-    # repeat_2: 10 blocks
-    # repeat_3: 5 blocks
-    
+    # 3. Analyze Layers
     layer_counts = {
         'repeat_1': len(base_model.repeat_1),
         'repeat_2': len(base_model.repeat_2),
         'repeat_3': len(base_model.repeat_3)
     }
     
-    print("\nLayer Block Counts:", layer_counts)
-    
     results = []
-    
     print("Analyzing blocks...")
     for layer_name, num_blocks in layer_counts.items():
         for block_idx in range(num_blocks):
-            
             skip_config = {layer_name: [block_idx]}
             pruned_model = get_pruned_model(skip_config=skip_config)
-            pruned_model.to(device)
-            pruned_model.eval()
+            pruned_model.to(device).eval()
             
             with torch.no_grad():
                 pruned_embeddings = pruned_model(images)
             
-            # Cosine Similarity
             cos_sim = torch.nn.functional.cosine_similarity(base_embeddings, pruned_embeddings)
             avg_sim = cos_sim.mean().item()
             
             results.append({
                 'layer': layer_name,
                 'block': block_idx,
-                'similarity': avg_sim,
-                'description': f"{layer_name} - Block {block_idx}"
+                'similarity': avg_sim
             })
-            
             print(f"Analyzed {layer_name} Block {block_idx}: Similarity = {avg_sim:.5f}")
 
     # 4. Generate Report
-    report_path = "sensitivity_report.md"
+    report_path = args.output_report
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("# Sensitivity Analysis Report\n\n")
         f.write("## Understanding the Score\n")
@@ -126,7 +113,6 @@ def analyze_sensitivity(image_folder='faces'):
         f.write("\n## Top Recommendations\n")
         f.write("To improve FPS with minimal accuracy loss, consider pruning the following blocks:\n\n")
         f.write("```bash\n")
-        # Generate command line args example
         prune_cmd = []
         for layer in ['repeat_2', 'repeat_3']:
             candidates = [str(r['block']) for r in results if r['layer'] == layer and r['similarity'] > 0.985]
@@ -137,7 +123,10 @@ def analyze_sensitivity(image_folder='faces'):
         f.write("```\n")
 
     print(f"\nReport saved to {report_path}")
-    return results
 
 if __name__ == "__main__":
-    analyze_sensitivity()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--image_folder', type=str, default='faces', help='Folder with sample images')
+    parser.add_argument('--output_report', type=str, default='sensitivity_report.md')
+    args = parser.parse_args()
+    analyze_sensitivity(args)

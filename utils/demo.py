@@ -4,6 +4,7 @@ import time
 import numpy as np
 import sys
 import os
+import argparse
 from torchvision import transforms
 from facenet_pytorch import MTCNN
 
@@ -12,7 +13,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from models.base_model import get_base_model
 from models.pruned_model import get_pruned_model
 
-def run_demo():
+def draw_text_with_shadow(img, text, pos, font, scale, color, thickness, shadow_color=(0, 0, 0)):
+    """Draws text with a slight shadow for better visibility on complex backgrounds."""
+    x, y = pos
+    # Draw shadow
+    cv2.putText(img, text, (x+2, y+2), font, scale, shadow_color, thickness + 1)
+    # Draw main text
+    cv2.putText(img, text, (x, y), font, scale, color, thickness)
+
+def run_demo(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Running demo on {device}")
     print("Controls: 'p' to toggle Pruning, 'q' to Quit")
@@ -25,18 +34,22 @@ def run_demo():
     original_model = get_base_model()
     original_model.to(device).eval()
 
-    # Recommended pruning config from sensitivity analysis
-    skip_config = {
-        'repeat_2': [6, 0, 4, 8, 2, 3, 9], 
-        'repeat_3': [0]
-    }
+    # Determine which layers to skip for the pruned model
+    skip_config = {}
+    if args.prune_repeat_1:
+         skip_config['repeat_1'] = [int(x) for x in args.prune_repeat_1.split(',')]
+    if args.prune_repeat_2:
+        skip_config['repeat_2'] = [int(x) for x in args.prune_repeat_2.split(',')]
+    if args.prune_repeat_3:
+         skip_config['repeat_3'] = [int(x) for x in args.prune_repeat_3.split(',')]
+
     pruned_model = get_pruned_model(skip_config=skip_config)
-    checkpoint_path = os.path.join(os.path.dirname(__file__), '..', 'checkpoints', 'pruned_epoch_10.pth')
-    if os.path.exists(checkpoint_path):
-        print(f"Loading trained weights from {checkpoint_path}...")
-        pruned_model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    
+    if os.path.exists(args.checkpoint):
+        print(f"Loading trained weights from {args.checkpoint}...")
+        pruned_model.load_state_dict(torch.load(args.checkpoint, map_location=device))
     else:
-        print(f"Warning: Checkpoint {checkpoint_path} not found. Running with un-tuned pruned model.")
+        print(f"Warning: Checkpoint {args.checkpoint} not found. Running with un-tuned pruned model.")
     pruned_model.to(device).eval()
 
     # 2. Setup Video
@@ -62,12 +75,12 @@ def run_demo():
             break
 
         # 3. Face Detection
-        # Detect face bounding box
+        # Detect face bounding box (MTCNN)
         boxes, _ = mtcnn.detect(frame)
         
         has_face = False
         if boxes is not None:
-            # Take the first (largest) face
+            # Take the largest face
             box = boxes[0].astype(int)
             x1, y1, x2, y2 = box
             
@@ -81,7 +94,7 @@ def run_demo():
                 has_face = True
 
         if not has_face:
-            # Fallback to center area if no face detected
+            # Fallback to center area
             h, w, _ = frame.shape
             size = min(h, w)
             x1, y1 = (w - size) // 2, (h - size) // 2
@@ -93,32 +106,43 @@ def run_demo():
         
         current_model = pruned_model if use_pruned else original_model
         
+        # PERFORMANCE CALCULATION:
+        # We only measure the time spent inside the Recognition Model (InceptionResnet).
+        # We do NOT include preprocessing or MTCNN detection in this measurement
+        # because those parts are identical for both "Original" and "Pruned" modes.
+        # This gives a "pure" comparison of the model engine speed.
+        
         start_time = time.time()
         with torch.no_grad():
             _ = current_model(input_tensor)
         end_time = time.time()
         
         # 5. UI Updates
+        # Latency = time in milliseconds
+        # FPS = 1.0 / time in seconds
         latency = (end_time - start_time) * 1000
         fps = 1.0 / (end_time - start_time)
+        
         fps_history.append(fps)
-        if len(fps_history) > 30:
+        if len(fps_history) > 30: # 30-frame moving average for stability
             fps_history.pop(0)
         avg_fps = np.mean(fps_history)
 
         mode_text = "PRUNED" if use_pruned else "ORIGINAL"
-        status_color = (0, 255, 0) if use_pruned else (0, 255, 255)
+        status_color = (0, 255, 0) if use_pruned else (0, 255, 255) # Green vs Yellow
         box_color = (255, 0, 0) if has_face else (50, 50, 50)
         
         # Draw on frame
         cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
         if not has_face:
-             cv2.putText(frame, "NO FACE DETECTED (Center Crop)", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+             draw_text_with_shadow(frame, "NO FACE (Center Crop)", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-        cv2.putText(frame, f"Mode: {mode_text}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, status_color, 2)
-        cv2.putText(frame, f"FPS: {avg_fps:.1f}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.putText(frame, f"Latency: {latency:.1f} ms", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        cv2.putText(frame, "Press 'p' to toggle, 'q' to quit", (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        # High visibility UI
+        draw_text_with_shadow(frame, f"Mode: {mode_text}", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, status_color, 3)
+        draw_text_with_shadow(frame, f"FPS: {avg_fps:.1f}", (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        draw_text_with_shadow(frame, f"Latency: {latency:.1f} ms", (10, 125), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        
+        draw_text_with_shadow(frame, "Press 'p' to toggle, 'q' to quit", (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
         cv2.imshow("Face Model Optimization Demo", frame)
         
@@ -134,4 +158,11 @@ def run_demo():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    run_demo()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--checkpoint', type=str, default='checkpoints/pruned_epoch_10.pth')
+    parser.add_argument('--prune_repeat_1', type=str, default='')
+    parser.add_argument('--prune_repeat_2', type=str, default='6,0,4,8,2,3,9') # Default to sensitivity report findings
+    parser.add_argument('--prune_repeat_3', type=str, default='0')
+    
+    args = parser.parse_args()
+    run_demo(args)
