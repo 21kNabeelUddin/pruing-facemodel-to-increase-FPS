@@ -31,6 +31,12 @@ def run_demo():
         'repeat_3': [0]
     }
     pruned_model = get_pruned_model(skip_config=skip_config)
+    checkpoint_path = os.path.join(os.path.dirname(__file__), '..', 'checkpoints', 'pruned_epoch_10.pth')
+    if os.path.exists(checkpoint_path):
+        print(f"Loading trained weights from {checkpoint_path}...")
+        pruned_model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    else:
+        print(f"Warning: Checkpoint {checkpoint_path} not found. Running with un-tuned pruned model.")
     pruned_model.to(device).eval()
 
     # 2. Setup Video
