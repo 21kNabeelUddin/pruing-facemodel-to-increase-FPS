@@ -158,8 +158,13 @@ def run_demo(args):
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
+    # Get the project root directory relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '..'))
+    default_checkpoint = os.path.join(project_root, 'checkpoints', 'pruned_epoch_10.pth')
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--checkpoint', type=str, default='checkpoints/pruned_epoch_10.pth')
+    parser.add_argument('--checkpoint', type=str, default=default_checkpoint)
     parser.add_argument('--prune_repeat_1', type=str, default='')
     parser.add_argument('--prune_repeat_2', type=str, default='6,0,4,8,2,3,9') # Default to sensitivity report findings
     parser.add_argument('--prune_repeat_3', type=str, default='0')
