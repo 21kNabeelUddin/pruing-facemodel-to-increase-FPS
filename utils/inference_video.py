@@ -18,12 +18,14 @@ def run_video_inference(args):
     
     # 1. Setup Models
     # MTCNN handles DETECTION, InceptionResnet handles RECOGNITION (Features)
+    # 1. Setup Models
+    # MTCNN handles DETECTION, InceptionResnet handles RECOGNITION (Features)
     # Tuning for surveillance: Lower thresholds and smaller min_face_size
     mtcnn = MTCNN(
         keep_all=True, 
         device=device,
-        min_face_size=15,
-        thresholds=[0.5, 0.6, 0.6] # Standard is [0.6, 0.7, 0.7]
+        min_face_size=50, # Increased from 15 to remove small noise
+        thresholds=[0.7, 0.8, 0.8] # Stricter thresholds to remove false positives
     ) 
     
     skip_config = {
@@ -39,11 +41,17 @@ def run_video_inference(args):
     model.to(device).eval()
 
     # 2. Setup Video
-    if not os.path.exists(args.input):
-        print(f"Error: Video file {args.input} not found.")
-        return
+    video_path = args.input
+    if not os.path.exists(video_path):
+        # Check project root
+        root_path = os.path.join(os.path.dirname(__file__), '..', args.input)
+        if os.path.exists(root_path):
+            video_path = root_path
+        else:
+            print(f"Error: Video file {args.input} not found in current or root directory.")
+            return
 
-    cap = cv2.VideoCapture(args.input)
+    cap = cv2.VideoCapture(video_path)
     width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps_video = cap.get(cv2.CAP_PROP_FPS)
